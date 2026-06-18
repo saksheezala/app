@@ -1,0 +1,73 @@
+# =============================================================================
+# templates/post-deploy-validate.yml
+# Smoke test template — runs after QA deployment on release branch.
+# If ANY check fails → UAT deployment is BLOCKED.
+#
+# Tests:
+#   1. Backend health endpoint  (/health)
+#   2. Backend readiness probe  (/health/ready)
+#   3. Items API smoke test     (/api/v1/items)
+#   4. Frontend HTTP check      (nginx serving 200)
+# =============================================================================
+
+parameters:
+  - name: environment
+    type: string
+  - name: backendUrl
+    type: string
+    default: 'http://localhost:3000'
+  - name: frontendUrl
+    type: string
+    default: 'http://localhost'
+
+jobs:
+  - job: Smoke_Test_${{ parameters.environment }}
+    displayName: 'Smoke Tests — ${{ parameters.environment }}'
+    steps:
+
+      - script: |
+          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+          echo " Post-Deploy Smoke Tests"
+          echo " Environment : ${{ parameters.environment }}"
+          echo " Backend URL : ${{ parameters.backendUrl }}"
+          echo " Frontend URL: ${{ parameters.frontendUrl }}"
+          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+        displayName: 'Print smoke test info'
+
+      - script: |
+          chmod +x scripts/post-deploy-validation.sh
+          ./scripts/post-deploy-validation.sh "${{ parameters.environment }}" "${{ parameters.backendUrl }}"
+        displayName: 'Run post-deploy validation script'
+        # Allow a short grace period for containers to fully start
+        timeoutInMinutes: 5
+
+      - script: |
+          echo "[Frontend] Checking ${{ parameters.frontendUrl }}..."
+          MAX_RETRIES=5
+          RETRY_DELAY=5
+          HTTP_CODE=0
+
+          for i in $(seq 1 $MAX_RETRIES); do
+            HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" "${{ parameters.frontendUrl }}" || echo "000")
+            echo "  Attempt $i/$MAX_RETRIES — HTTP $HTTP_CODE"
+            if [ "$HTTP_CODE" -eq 200 ]; then break; fi
+            sleep $RETRY_DELAY
+          done
+
+          if [ "$HTTP_CODE" -ne 200 ]; then
+            echo "❌ Frontend health check FAILED after $MAX_RETRIES attempts (HTTP $HTTP_CODE)"
+            echo "   UAT deployment will be BLOCKED."
+            exit 1
+          fi
+
+          echo "✅ Frontend responding with HTTP $HTTP_CODE"
+        displayName: 'Check frontend availability (with retry)'
+        timeoutInMinutes: 3
+
+      - script: |
+          echo ""
+          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+          echo "✅ All smoke tests PASSED for ${{ parameters.environment }}"
+          echo "   Proceeding to UAT deployment..."
+          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+        displayName: 'Smoke tests passed'

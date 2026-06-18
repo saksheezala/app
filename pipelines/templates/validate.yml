@@ -1,0 +1,95 @@
+# =============================================================================
+# templates/validate.yml
+# Reusable validation template — Lint + Test for both frontend and backend.
+# Runs in PARALLEL (two separate jobs). Called by Stage 1 of every pipeline.
+#
+# If lint OR tests fail on either service → the entire pipeline fails.
+# No Docker build. No deployment. Ever.
+# =============================================================================
+
+parameters:
+  - name: frontendDir
+    type: string
+    default: 'frontend'
+  - name: backendDir
+    type: string
+    default: 'backend'
+
+jobs:
+
+  # ── Frontend: Lint + Test + Build verify ─────────────────────────────────
+  - job: Validate_Frontend
+    displayName: 'Frontend — Lint + Test'
+    steps:
+
+      - task: NodeTool@0
+        displayName: 'Use Node.js 20'
+        inputs:
+          versionSpec: '20.x'
+
+      - script: npm ci --prefer-offline
+        displayName: 'Install dependencies (ci)'
+        workingDirectory: '${{ parameters.frontendDir }}'
+
+      - script: npm run lint
+        displayName: 'ESLint — zero warnings policy'
+        workingDirectory: '${{ parameters.frontendDir }}'
+
+      - script: npm run test
+        displayName: 'Vitest — unit tests (JUnit output in CI)'
+        workingDirectory: '${{ parameters.frontendDir }}'
+        env:
+          CI: 'true'
+
+      - script: npm run build
+        displayName: 'TypeScript + Vite build (compile check)'
+        workingDirectory: '${{ parameters.frontendDir }}'
+
+      - task: PublishTestResults@2
+        displayName: 'Publish test results'
+        condition: always()
+        inputs:
+          testResultsFormat: 'JUnit'
+          testResultsFiles: '${{ parameters.frontendDir }}/test-results/*.xml'
+          mergeTestResults: true
+          testRunTitle: 'Frontend Unit Tests'
+          failTaskOnFailedTests: true
+
+  # ── Backend: Lint + Test + Build verify ──────────────────────────────────
+  - job: Validate_Backend
+    displayName: 'Backend — Lint + Test'
+    steps:
+
+      - task: NodeTool@0
+        displayName: 'Use Node.js 20'
+        inputs:
+          versionSpec: '20.x'
+
+      - script: npm ci --prefer-offline
+        displayName: 'Install dependencies (ci)'
+        workingDirectory: '${{ parameters.backendDir }}'
+
+      - script: npm run lint
+        displayName: 'ESLint — zero warnings policy'
+        workingDirectory: '${{ parameters.backendDir }}'
+
+      - script: npm test -- --ci --reporters=default --reporters=jest-junit
+        displayName: 'Jest — integration tests'
+        workingDirectory: '${{ parameters.backendDir }}'
+        env:
+          JEST_JUNIT_OUTPUT_DIR: 'test-results'
+          JEST_JUNIT_OUTPUT_NAME: 'results.xml'
+
+      - script: npm run build
+        displayName: 'TypeScript compile (tsc)'
+        workingDirectory: '${{ parameters.backendDir }}'
+
+      - task: PublishTestResults@2
+        displayName: 'Publish test results'
+        condition: always()
+        inputs:
+          testResultsFormat: 'JUnit'
+          testResultsFiles: '${{ parameters.backendDir }}/test-results/*.xml'
+          mergeTestResults: true
+          testRunTitle: 'Backend Integration Tests'
+          failTaskOnFailedTests: true

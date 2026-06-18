@@ -1,0 +1,108 @@
+# =============================================================================
+# templates/docker-build-push.yml
+# Reusable Docker build + push template.
+# Builds BOTH frontend and backend images in parallel jobs.
+# Tags both images with Build.BuildId — immutable, unique per pipeline run.
+#
+# Authentication: Uses Azure DevOps Docker Registry Service Connection.
+# No credentials in YAML — all secrets managed by Azure DevOps.
+# =============================================================================
+
+parameters:
+  - name: frontendImage
+    type: string
+  - name: backendImage
+    type: string
+  - name: tag
+    type: string
+  - name: dockerHubConnection
+    type: string
+  - name: viteApiUrl
+    type: string
+    default: 'https://api.yourapp.com'
+
+jobs:
+
+  # ── Build & Push Backend ──────────────────────────────────────────────────
+  - job: Build_Push_Backend
+    displayName: 'Backend — Build & Push :$(Build.BuildId)'
+    steps:
+
+      - script: |
+          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+          echo " Backend Build"
+          echo " Image : ${{ parameters.backendImage }}:${{ parameters.tag }}"
+          echo " Commit: $(Build.SourceVersion)"
+          echo " Branch: $(Build.SourceBranchName)"
+          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+        displayName: 'Print build info'
+
+      - task: Docker@2
+        displayName: 'Build backend image'
+        inputs:
+          command: 'build'
+          repository: '${{ parameters.backendImage }}'
+          dockerfile: 'backend/Dockerfile'
+          buildContext: 'backend'
+          containerRegistry: '${{ parameters.dockerHubConnection }}'
+          tags: '${{ parameters.tag }}'
+          arguments: >
+            --label "org.opencontainers.image.revision=$(Build.SourceVersion)"
+            --label "org.opencontainers.image.created=$(Build.QueueTime)"
+            --label "build.id=$(Build.BuildId)"
+
+      - task: Docker@2
+        displayName: 'Push backend image'
+        inputs:
+          command: 'push'
+          repository: '${{ parameters.backendImage }}'
+          containerRegistry: '${{ parameters.dockerHubConnection }}'
+          tags: '${{ parameters.tag }}'
+
+      - script: |
+          echo "✅ Backend pushed: ${{ parameters.backendImage }}:${{ parameters.tag }}"
+        displayName: 'Confirm push'
+
+  # ── Build & Push Frontend ─────────────────────────────────────────────────
+  - job: Build_Push_Frontend
+    displayName: 'Frontend — Build & Push :$(Build.BuildId)'
+    steps:
+
+      - script: |
+          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+          echo " Frontend Build"
+          echo " Image  : ${{ parameters.frontendImage }}:${{ parameters.tag }}"
+          echo " API URL: ${{ parameters.viteApiUrl }}"
+          echo " Commit : $(Build.SourceVersion)"
+          echo " Branch : $(Build.SourceBranchName)"
+          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+        displayName: 'Print build info'
+
+      - task: Docker@2
+        displayName: 'Build frontend image'
+        inputs:
+          command: 'build'
+          repository: '${{ parameters.frontendImage }}'
+          dockerfile: 'frontend/Dockerfile'
+          buildContext: 'frontend'
+          containerRegistry: '${{ parameters.dockerHubConnection }}'
+          tags: '${{ parameters.tag }}'
+          # VITE_API_URL is baked into the JS bundle at build time by Vite.
+          # Set the correct URL per branch via Azure DevOps variable groups.
+          arguments: >
+            --build-arg VITE_API_URL=${{ parameters.viteApiUrl }}
+            --label "org.opencontainers.image.revision=$(Build.SourceVersion)"
+            --label "org.opencontainers.image.created=$(Build.QueueTime)"
+            --label "build.id=$(Build.BuildId)"
+
+      - task: Docker@2
+        displayName: 'Push frontend image'
+        inputs:
+          command: 'push'
+          repository: '${{ parameters.frontendImage }}'
+          containerRegistry: '${{ parameters.dockerHubConnection }}'
+          tags: '${{ parameters.tag }}'
+
+      - script: |
+          echo "✅ Frontend pushed: ${{ parameters.frontendImage }}:${{ parameters.tag }}"
+        displayName: 'Confirm push'

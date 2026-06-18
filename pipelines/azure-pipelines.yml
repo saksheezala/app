@@ -1,0 +1,237 @@
+# =============================================================================
+# azure-pipelines.yml — Single pipeline, build once, deploy everywhere
+#
+# ┌─────────────────────────────────────────────────────────────────────────┐
+# │  TRIGGER        FLOW                                                    │
+# │  PR             Validate only (lint + test) — NO build, NO deploy       │
+# │  feature/*      Validate → Build&Push → Deploy DEV                      │
+# │  release        Validate → Build&Push → Deploy QA → Smoke Test → UAT   │
+# │  main           Validate → Build&Push → Deploy STAGE ✋→ Deploy PROD ✋  │
+# └─────────────────────────────────────────────────────────────────────────┘
+#
+# Image tag: $(Build.BuildId) — immutable, built once per pipeline run.
+# Manual approvals: configured on 'stage' and 'prod' Environments in Azure DevOps UI.
+# =============================================================================
+
+# ── CI Triggers ──────────────────────────────────────────────────────────────
+trigger:
+  branches:
+    include:
+      - feature/*
+      - release
+      - main
+  paths:
+    exclude:
+      - '*.md'
+      - '.gitignore'
+
+# ── PR Validation Trigger ─────────────────────────────────────────────────────
+# PRs run Validate stage only — no Docker build, no deployment.
+pr:
+  branches:
+    include:
+      - feature/*
+      - release
+      - main
+  paths:
+    exclude:
+      - '*.md'
+      - '.gitignore'
+
+# ── Agent Pool ────────────────────────────────────────────────────────────────
+pool:
+  vmImage: 'ubuntu-latest'
+
+# ── Pipeline Variables ────────────────────────────────────────────────────────
+variables:
+  # Immutable image tag — Build.BuildId is unique per pipeline run
+  - name: tag
+    value: '$(Build.BuildId)'
+
+  # Docker Hub image names
+  - name: frontendImage
+    value: 'saksheezala/app-frontend'
+  - name: backendImage
+    value: 'saksheezala/app-backend'
+
+  # Name of the Docker Registry Service Connection in Azure DevOps
+  # Create this at: Project Settings → Service Connections → New → Docker Registry
+  - name: dockerHubConnection
+    value: 'dockerhub-saksheezala'
+
+  # Frontend API URL baked into the Vite build at build time.
+  # Override this in Azure DevOps → Library → Variable Groups per environment.
+  # For 'main' branch (STAGE + PROD), set this to your production API URL.
+  - name: VITE_API_URL
+    value: 'https://api.yourapp.com'
+
+# =============================================================================
+# STAGES
+# =============================================================================
+stages:
+
+  # ── Stage 1: Validate ────────────────────────────────────────────────────
+  # Runs on ALL triggers including PRs.
+  # Lint + Test both frontend and backend in parallel.
+  # If this fails, the entire pipeline stops — nothing deploys.
+  # ─────────────────────────────────────────────────────────────────────────
+  - stage: Validate
+    displayName: '🔍 Validate — Lint + Test'
+    jobs:
+      - template: templates/validate.yml
+        parameters:
+          frontendDir: 'frontend'
+          backendDir: 'backend'
+
+  # ── Stage 2: Build & Push Docker Images ──────────────────────────────────
+  # Skipped for PRs (ne Build.Reason PullRequest).
+  # Builds BOTH images with Build.BuildId tag — this same tag flows
+  # through all subsequent deploy stages on this pipeline run.
+  # ─────────────────────────────────────────────────────────────────────────
+  - stage: Build_and_Push
+    displayName: '🐳 Build & Push — $(Build.BuildId)'
+    dependsOn: Validate
+    condition: |
+      and(
+        succeeded(),
+        ne(variables['Build.Reason'], 'PullRequest')
+      )
+    jobs:
+      - template: templates/docker-build-push.yml
+        parameters:
+          frontendImage: '$(frontendImage)'
+          backendImage: '$(backendImage)'
+          tag: '$(tag)'
+          dockerHubConnection: '$(dockerHubConnection)'
+          viteApiUrl: '$(VITE_API_URL)'
+
+  # ── Stage 3: Deploy → DEV ────────────────────────────────────────────────
+  # Runs only on feature/* branches.
+  # No approval required — auto-deploys on every push.
+  # ─────────────────────────────────────────────────────────────────────────
+  - stage: Deploy_DEV
+    displayName: '🚀 Deploy → DEV'
+    dependsOn: Build_and_Push
+    condition: |
+      and(
+        succeeded(),
+        ne(variables['Build.Reason'], 'PullRequest'),
+        startsWith(variables['Build.SourceBranch'], 'refs/heads/feature/')
+      )
+    jobs:
+      - template: templates/deploy.yml
+        parameters:
+          environmentName: 'dev'
+          displayName: 'DEV'
+          frontendImage: '$(frontendImage)'
+          backendImage: '$(backendImage)'
+          tag: '$(tag)'
+
+  # ── Stage 4: Deploy → QA ─────────────────────────────────────────────────
+  # Runs only on release branch.
+  # No approval — auto-deploys. Smoke tests run AFTER in Stage 5.
+  # ─────────────────────────────────────────────────────────────────────────
+  - stage: Deploy_QA
+    displayName: '🚀 Deploy → QA'
+    dependsOn: Build_and_Push
+    condition: |
+      and(
+        succeeded(),
+        ne(variables['Build.Reason'], 'PullRequest'),
+        eq(variables['Build.SourceBranch'], 'refs/heads/release')
+      )
+    jobs:
+      - template: templates/deploy.yml
+        parameters:
+          environmentName: 'qa'
+          displayName: 'QA'
+          frontendImage: '$(frontendImage)'
+          backendImage: '$(backendImage)'
+          tag: '$(tag)'
+
+  # ── Stage 5: Post-Deploy Smoke Tests (QA) ────────────────────────────────
+  # Runs only after successful QA deployment on release branch.
+  # If smoke tests FAIL → UAT is blocked. Fix QA first.
+  # ─────────────────────────────────────────────────────────────────────────
+  - stage: Post_Deploy_QA_Validate
+    displayName: '🧪 Smoke Tests — QA'
+    dependsOn: Deploy_QA
+    condition: |
+      and(
+        succeeded(),
+        eq(variables['Build.SourceBranch'], 'refs/heads/release')
+      )
+    jobs:
+      - template: templates/post-deploy-validate.yml
+        parameters:
+          environment: 'QA'
+          backendUrl: 'http://qa-server.yourapp.com:3000'
+          frontendUrl: 'http://qa-server.yourapp.com'
+
+  # ── Stage 6: Deploy → UAT ────────────────────────────────────────────────
+  # Runs only after smoke tests pass on release branch.
+  # Same Build.BuildId tag as QA — same image, no rebuild.
+  # No approval — auto-deploys after passing QA validation.
+  # ─────────────────────────────────────────────────────────────────────────
+  - stage: Deploy_UAT
+    displayName: '🚀 Deploy → UAT'
+    dependsOn: Post_Deploy_QA_Validate
+    condition: |
+      and(
+        succeeded(),
+        eq(variables['Build.SourceBranch'], 'refs/heads/release')
+      )
+    jobs:
+      - template: templates/deploy.yml
+        parameters:
+          environmentName: 'uat'
+          displayName: 'UAT'
+          frontendImage: '$(frontendImage)'
+          backendImage: '$(backendImage)'
+          tag: '$(tag)'
+
+  # ── Stage 7: Deploy → STAGE ──────────────────────────────────────────────
+  # Runs only on main branch.
+  # ✋ MANUAL APPROVAL REQUIRED — configured on 'stage' Environment in Azure DevOps.
+  #    Pipeline pauses here and notifies approvers. Resumes only after approval.
+  # ─────────────────────────────────────────────────────────────────────────
+  - stage: Deploy_STAGE
+    displayName: '✋ Deploy → STAGE (Approval Required)'
+    dependsOn: Build_and_Push
+    condition: |
+      and(
+        succeeded(),
+        ne(variables['Build.Reason'], 'PullRequest'),
+        eq(variables['Build.SourceBranch'], 'refs/heads/main')
+      )
+    jobs:
+      - template: templates/deploy.yml
+        parameters:
+          environmentName: 'stage'
+          displayName: 'STAGE'
+          frontendImage: '$(frontendImage)'
+          backendImage: '$(backendImage)'
+          tag: '$(tag)'
+
+  # ── Stage 8: Deploy → PROD ───────────────────────────────────────────────
+  # Runs only after successful STAGE deployment on main branch.
+  # ✋ MANUAL APPROVAL REQUIRED — configured on 'prod' Environment in Azure DevOps.
+  # PROD has dedicated, isolated infrastructure (per project constraint).
+  # Same Build.BuildId tag as STAGE — guaranteed byte-for-byte identical image.
+  # ─────────────────────────────────────────────────────────────────────────
+  - stage: Deploy_PROD
+    displayName: '✋ Deploy → PROD (Approval Required)'
+    dependsOn: Deploy_STAGE
+    condition: |
+      and(
+        succeeded(),
+        eq(variables['Build.SourceBranch'], 'refs/heads/main')
+      )
+    jobs:
+      - template: templates/deploy.yml
+        parameters:
+          environmentName: 'prod'
+          displayName: 'PROD'
+          frontendImage: '$(frontendImage)'
+          backendImage: '$(backendImage)'
+          tag: '$(tag)'

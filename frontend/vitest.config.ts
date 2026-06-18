@@ -10,6 +10,8 @@ export default defineConfig({
     setupFiles: ['./src/test/setup.ts'],
     include: ['src/**/*.{test,spec}.{ts,tsx}'],
     exclude: ['node_modules', 'dist'],
+    reporters: process.env.CI ? ['default', 'junit'] : ['default'],
+    outputFile: process.env.CI ? { junit: './test-results/results.xml' } : undefined,
     typecheck: {
       tsconfig: './tsconfig.app.json',
       include: ['src/**/*.{test,spec}.{ts,tsx}'],
