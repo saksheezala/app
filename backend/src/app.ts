@@ -27,7 +27,7 @@ export function createApp(): Application {
   app.use(express.urlencoded({ extended: true }));
 
   // ─── Routes ───────────────────────────────────────────────
-  app.get('/', (req, res) => {
+  app.get('/', (_req, res) => {
     res.json({ message: 'CICD Monorepo API is running!' });
   });
   app.use('/health', healthRouter);
