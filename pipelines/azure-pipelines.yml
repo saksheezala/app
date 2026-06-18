@@ -62,7 +62,7 @@ variables:
   # Frontend API URL baked into the Vite build at build time.
   # For 'main' branch (STAGE + PROD), set this to your production API URL.
   - name: VITE_API_URL
-    value: 'https://sakshee-app-backend.azurewebsites.net'
+    value: 'https://sakshee-app-backend-gkd9fghrephmdjcf.centralindia-01.azurewebsites.net'
 
 # =============================================================================
 # STAGES

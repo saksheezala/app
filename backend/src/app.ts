@@ -14,7 +14,10 @@ export function createApp(): Application {
   app.use(helmet());
   app.use(
     cors({
-      origin: process.env.ALLOWED_ORIGINS?.split(',') ?? ['http://localhost:5173', 'https://sakshee-app-frontend.azurewebsites.net'],
+      origin: process.env.ALLOWED_ORIGINS?.split(',') ?? [
+        'http://localhost:5173', 
+        'https://sakshee-app-frontend-cgf8apfwcahkeudw.centralindia-01.azurewebsites.net'
+      ],
       credentials: true,
     }),
   );
