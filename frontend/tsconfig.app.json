@@ -14,19 +14,17 @@
     "noEmit": true,
     "jsx": "react-jsx",
 
+    /* Allow CSS/asset side-effect imports */
+    "allowArbitraryExtensions": true,
+
+    /* Vite env types (provides import.meta.env) */
+    "types": ["vite/client"],
+
     /* Strict linting */
     "strict": true,
     "noUnusedLocals": true,
     "noUnusedParameters": true,
-    "noFallthroughCasesInSwitch": true,
-    "noUncheckedSideEffectImports": true,
-
-    /* Path aliases */
-    "baseUrl": ".",
-    "paths": {
-      "@/*": ["src/*"]
-    }
+    "noFallthroughCasesInSwitch": true
   },
-  "include": ["src"],
-  "references": [{ "path": "./tsconfig.node.json" }]
+  "include": ["src", "vite.config.ts"]
 }
