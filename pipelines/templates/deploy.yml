@@ -75,19 +75,19 @@ jobs:
               # 3. Replace 'your-frontend-app-name' and 'your-backend-app-name'
               # ─────────────────────────────────────────────────────────────────
               
-              # - task: AzureWebAppContainer@1
-              #   displayName: 'Deploy Backend to Azure Web App'
-              #   inputs:
-              #     azureSubscription: 'azure-arm-connection'
-              #     appName: 'your-backend-app-name'
-              #     containers: '${{ parameters.backendImage }}:${{ parameters.tag }}'
+              - task: AzureWebAppContainer@1
+                displayName: 'Deploy Backend to Azure Web App'
+                inputs:
+                  azureSubscription: 'azure-arm-connection'
+                  appName: 'sakshee-app-backend'
+                  containers: '${{ parameters.backendImage }}:${{ parameters.tag }}'
 
-              # - task: AzureWebAppContainer@1
-              #   displayName: 'Deploy Frontend to Azure Web App'
-              #   inputs:
-              #     azureSubscription: 'azure-arm-connection'
-              #     appName: 'your-frontend-app-name'
-              #     containers: '${{ parameters.frontendImage }}:${{ parameters.tag }}'
+              - task: AzureWebAppContainer@1
+                displayName: 'Deploy Frontend to Azure Web App'
+                inputs:
+                  azureSubscription: 'azure-arm-connection'
+                  appName: 'sakshee-app-frontend'
+                  containers: '${{ parameters.frontendImage }}:${{ parameters.tag }}'
 
             - script: |
                 echo "✅ Stage ${{ parameters.displayName }} complete."
