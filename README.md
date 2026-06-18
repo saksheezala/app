@@ -1,6 +1,9 @@
-# cicd-monorepo
+# app
 
 A production-ready monorepo with a React (Vite + TypeScript) frontend and Node.js (Express + TypeScript) backend, containerised with Docker and deployed via Azure DevOps Pipelines.
+
+> **GitHub**: https://github.com/saksheezala/app  
+> **Docker Hub**: https://hub.docker.com/u/saksheezala (`saksheezala/app-frontend`, `saksheezala/app-backend`)
 
 ## Repository Structure
 

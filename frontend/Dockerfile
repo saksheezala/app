@@ -61,6 +61,6 @@ EXPOSE 80
 CMD ["nginx", "-g", "daemon off;"]
 
 # ── Metadata ──────────────────────────────────────────────────────────────────
-LABEL org.opencontainers.image.title="cicd-monorepo-frontend" \
+LABEL org.opencontainers.image.title="app-frontend" \
       org.opencontainers.image.description="React + Vite SPA served by Nginx" \
-      org.opencontainers.image.source="https://github.com/your-org/cicd-monorepo"
+      org.opencontainers.image.source="https://github.com/saksheezala/app"

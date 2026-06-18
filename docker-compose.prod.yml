@@ -19,7 +19,7 @@ services:
       context: ./backend
       dockerfile: Dockerfile
       target: runtime          # ← Full production build
-    image: cicd-monorepo/backend:prod-local
+    image: saksheezala/app-backend:prod-local
     container_name: cicd-backend-prod
     command: []                # Use the Dockerfile CMD (node dist/index.js)
     volumes: []                # No source mounts in prod
@@ -36,7 +36,7 @@ services:
       target: runtime          # ← Full production build (Nginx)
       args:
         VITE_API_URL: "http://localhost:3000"
-    image: cicd-monorepo/frontend:prod-local
+    image: saksheezala/app-frontend:prod-local
     container_name: cicd-frontend-prod
     ports:
       - "80:80"

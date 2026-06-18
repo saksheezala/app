@@ -22,7 +22,7 @@ services:
       dockerfile: Dockerfile
       # Use the 'builder' stage for dev so we have TypeScript source + devDeps
       target: builder
-    image: cicd-monorepo/backend:dev
+    image: saksheezala/app-backend:dev
     container_name: cicd-backend-dev
     restart: unless-stopped
     ports:
@@ -54,7 +54,7 @@ services:
       dockerfile: Dockerfile
       # Use the 'builder' stage for dev (has Vite + all devDeps)
       target: builder
-    image: cicd-monorepo/frontend:dev
+    image: saksheezala/app-frontend:dev
     container_name: cicd-frontend-dev
     restart: unless-stopped
     ports:

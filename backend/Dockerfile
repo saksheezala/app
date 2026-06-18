@@ -74,6 +74,6 @@ ENTRYPOINT ["dumb-init", "--"]
 CMD ["node", "dist/index.js"]
 
 # ── Metadata ──────────────────────────────────────────────────────────────────
-LABEL org.opencontainers.image.title="cicd-monorepo-backend" \
+LABEL org.opencontainers.image.title="app-backend" \
       org.opencontainers.image.description="Node.js Express TypeScript REST API" \
-      org.opencontainers.image.source="https://github.com/your-org/cicd-monorepo"
+      org.opencontainers.image.source="https://github.com/saksheezala/app"

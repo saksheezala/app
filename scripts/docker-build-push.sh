@@ -24,7 +24,7 @@ SHORT_SHA="${3:?Error: git short SHA required}"
 REGISTRY="${4:?Error: Docker Hub registry (username/org) required}"
 VITE_API_URL="${VITE_API_URL:-http://localhost:3000}"
 
-IMAGE="${REGISTRY}/cicd-${SERVICE}"
+IMAGE="${REGISTRY}/app-${SERVICE}"
 DOCKERFILE="./${SERVICE}/Dockerfile"
 CONTEXT="./${SERVICE}"
 
