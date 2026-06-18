@@ -61,20 +61,21 @@ jobs:
 
             # ─────────────────────────────────────────────────────────────────
             # PROD ENVIRONMENT ONLY
-            # Deploys the Docker containers to Azure App Service.
             # ─────────────────────────────────────────────────────────────────
             - ${{ if eq(parameters.environmentName, 'prod') }}:
-              - task: AzureWebAppContainer@1
-                displayName: 'Deploy Container to Azure Web App'
-                inputs:
-                  # NOTE: You must create an Azure Resource Manager service connection
-                  # named 'azure-arm-connection' in Azure DevOps Project Settings.
-                  azureSubscription: 'azure-arm-connection'
-                  # Replace with your actual Azure App Service name
-                  appName: 'my-prod-app-service-name'
-                  containers: |
-                    ${{ parameters.frontendImage }}:${{ parameters.tag }}
-                    ${{ parameters.backendImage }}:${{ parameters.tag }}
+              - script: |
+                  echo "🚀 PROD Deployment Triggered!"
+                  echo "When you have created your Azure App Service and Service Connection,"
+                  echo "uncomment the AzureWebAppContainer task in deploy.yml."
+                displayName: 'Deploy Container to Azure Web App (Placeholder)'
+              # - task: AzureWebAppContainer@1
+              #   displayName: 'Deploy Container to Azure Web App'
+              #   inputs:
+              #     azureSubscription: 'azure-arm-connection'
+              #     appName: 'my-prod-app-service-name'
+              #     containers: |
+              #       ${{ parameters.frontendImage }}:${{ parameters.tag }}
+              #       ${{ parameters.backendImage }}:${{ parameters.tag }}
 
             - script: |
                 echo "✅ Stage ${{ parameters.displayName }} complete."
