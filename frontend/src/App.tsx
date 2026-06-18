@@ -13,7 +13,7 @@ function App() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  const apiBaseUrl = import.meta.env.VITE_API_URL ?? 'http://localhost:3000';
+  const apiBaseUrl = (import.meta.env.VITE_API_URL as string | undefined) ?? 'http://localhost:3000';
 
   useEffect(() => {
     const fetchHealth = async (): Promise<void> => {

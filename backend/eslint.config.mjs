@@ -18,18 +18,28 @@ export default tseslint.config(
       '@typescript-eslint/explicit-function-return-type': ['error', { allowExpressions: true }],
       '@typescript-eslint/no-explicit-any': 'error',
       '@typescript-eslint/no-non-null-assertion': 'error',
+      '@typescript-eslint/restrict-template-expressions': ['error', { allowNumber: true }],
       'no-console': ['warn', { allow: ['warn', 'error', 'info'] }],
       'prefer-const': 'error',
       'no-var': 'error',
     },
   },
   {
-    // Relax rules for test files
+    // Relax rules for test and config files
     files: ['**/__tests__/**/*.ts', '**/*.test.ts', '**/*.spec.ts'],
     rules: {
       '@typescript-eslint/no-explicit-any': 'off',
       '@typescript-eslint/explicit-function-return-type': 'off',
+      '@typescript-eslint/no-unsafe-member-access': 'off',
+      '@typescript-eslint/no-unsafe-assignment': 'off',
+      '@typescript-eslint/no-unsafe-argument': 'off',
+      '@typescript-eslint/no-unsafe-call': 'off',
       'no-console': 'off',
     },
   },
+  {
+    // Disable typed linting for config files in the root dir
+    files: ['*.config.ts', '*.config.mjs'],
+    ...tseslint.configs.disableTypeChecked,
+  }
 );
