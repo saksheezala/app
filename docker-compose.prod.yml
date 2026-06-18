@@ -1,0 +1,44 @@
+# =============================================================================
+# docker-compose.prod.yml — Production image local validation
+#
+# Use this to test the FINAL production images locally before pushing.
+# This uses the full multi-stage build (runtime stage) — no source mounts.
+#
+# Usage:
+#   docker compose -f docker-compose.yml -f docker-compose.prod.yml up --build
+#
+# Frontend → http://localhost:80   (Nginx serving dist/)
+# Backend  → http://localhost:3000 (compiled Node.js)
+# =============================================================================
+
+name: cicd-monorepo-prod
+
+services:
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+      target: runtime          # ← Full production build
+    image: cicd-monorepo/backend:prod-local
+    container_name: cicd-backend-prod
+    command: []                # Use the Dockerfile CMD (node dist/index.js)
+    volumes: []                # No source mounts in prod
+    environment:
+      NODE_ENV: production
+      PORT: "3000"
+      HOST: "0.0.0.0"
+      ALLOWED_ORIGINS: "http://localhost:80"
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      target: runtime          # ← Full production build (Nginx)
+      args:
+        VITE_API_URL: "http://localhost:3000"
+    image: cicd-monorepo/frontend:prod-local
+    container_name: cicd-frontend-prod
+    ports:
+      - "80:80"
+    command: []                # Use the Dockerfile CMD (nginx -g daemon off)
+    volumes: []                # No source mounts in prod

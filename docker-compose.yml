@@ -1,0 +1,87 @@
+# =============================================================================
+# docker-compose.yml — Local Development Orchestration
+#
+# Usage:
+#   docker compose up --build          # Start both services with live reload
+#   docker compose up backend          # Start only the backend
+#   docker compose logs -f frontend    # Tail frontend logs
+#   docker compose down -v             # Tear down + remove volumes
+#
+# Frontend → http://localhost:5173   (Vite dev server with HMR)
+# Backend  → http://localhost:3000   (ts-node-dev with hot reload)
+# =============================================================================
+
+name: cicd-monorepo
+
+services:
+
+  # ── Backend ──────────────────────────────────────────────────────────────────
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+      # Use the 'builder' stage for dev so we have TypeScript source + devDeps
+      target: builder
+    image: cicd-monorepo/backend:dev
+    container_name: cicd-backend-dev
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      NODE_ENV: development
+      PORT: "3000"
+      HOST: "0.0.0.0"
+      ALLOWED_ORIGINS: "http://localhost:5173"
+    # Mount source for hot reload via ts-node-dev
+    volumes:
+      - ./backend/src:/app/src:ro
+      - backend_node_modules:/app/node_modules
+    # Override the production CMD with the dev server
+    command: ["npm", "run", "dev"]
+    networks:
+      - app-network
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:3000/health/live"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+
+  # ── Frontend ─────────────────────────────────────────────────────────────────
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      # Use the 'builder' stage for dev (has Vite + all devDeps)
+      target: builder
+    image: cicd-monorepo/frontend:dev
+    container_name: cicd-frontend-dev
+    restart: unless-stopped
+    ports:
+      - "5173:5173"
+    environment:
+      VITE_API_URL: "http://localhost:3000"
+    # Mount source for Vite HMR
+    volumes:
+      - ./frontend/src:/app/src:ro
+      - ./frontend/public:/app/public:ro
+      - frontend_node_modules:/app/node_modules
+    # Override production CMD with Vite dev server (host binding required for Docker)
+    command: ["npm", "run", "dev", "--", "--host", "0.0.0.0"]
+    depends_on:
+      backend:
+        condition: service_healthy
+    networks:
+      - app-network
+
+# ── Named Volumes ─────────────────────────────────────────────────────────────
+# Persist node_modules inside the container to avoid host-override issues
+# on macOS (where bind-mounted node_modules behave unexpectedly with native modules)
+volumes:
+  backend_node_modules:
+  frontend_node_modules:
+
+# ── Networks ──────────────────────────────────────────────────────────────────
+networks:
+  app-network:
+    driver: bridge
