@@ -18,7 +18,7 @@
     "allowArbitraryExtensions": true,
 
     /* Vite env types (provides import.meta.env) */
-    "types": ["vite/client"],
+    "types": ["vite/client", "@testing-library/jest-dom"],
 
     /* Strict linting */
     "strict": true,
@@ -26,5 +26,6 @@
     "noUnusedParameters": true,
     "noFallthroughCasesInSwitch": true
   },
-  "include": ["src", "vite.config.ts"]
+  "include": ["src", "vite.config.ts"],
+  "exclude": ["src/**/*.test.tsx", "src/**/*.test.ts", "src/**/*.spec.tsx", "src/**/*.spec.ts", "src/test"]
 }
