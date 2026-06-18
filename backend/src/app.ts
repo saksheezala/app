@@ -14,7 +14,7 @@ export function createApp(): Application {
   app.use(helmet());
   app.use(
     cors({
-      origin: process.env.ALLOWED_ORIGINS?.split(',') ?? ['http://localhost:5173'],
+      origin: process.env.ALLOWED_ORIGINS?.split(',') ?? ['http://localhost:5173', 'https://sakshee-app-frontend.azurewebsites.net'],
       credentials: true,
     }),
   );
@@ -27,6 +27,9 @@ export function createApp(): Application {
   app.use(express.urlencoded({ extended: true }));
 
   // ─── Routes ───────────────────────────────────────────────
+  app.get('/', (req, res) => {
+    res.json({ message: 'CICD Monorepo API is running!' });
+  });
   app.use('/health', healthRouter);
   app.use('/api/v1', apiRouter);
 

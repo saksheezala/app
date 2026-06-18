@@ -60,10 +60,9 @@ variables:
     value: 'dockerhub-saksheezala'
 
   # Frontend API URL baked into the Vite build at build time.
-  # Override this in Azure DevOps → Library → Variable Groups per environment.
   # For 'main' branch (STAGE + PROD), set this to your production API URL.
   - name: VITE_API_URL
-    value: 'https://api.yourapp.com'
+    value: 'https://sakshee-app-backend.azurewebsites.net'
 
 # =============================================================================
 # STAGES
