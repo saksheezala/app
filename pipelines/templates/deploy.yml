@@ -68,14 +68,26 @@ jobs:
                   echo "When you have created your Azure App Service and Service Connection,"
                   echo "uncomment the AzureWebAppContainer task in deploy.yml."
                 displayName: 'Deploy Container to Azure Web App (Placeholder)'
+              # ─────────────────────────────────────────────────────────────────
+              # HOW TO ENABLE PROD DEPLOYMENT:
+              # 1. Create the Azure Service Connection ('azure-arm-connection')
+              # 2. Uncomment the two tasks below
+              # 3. Replace 'your-frontend-app-name' and 'your-backend-app-name'
+              # ─────────────────────────────────────────────────────────────────
+              
               # - task: AzureWebAppContainer@1
-              #   displayName: 'Deploy Container to Azure Web App'
+              #   displayName: 'Deploy Backend to Azure Web App'
               #   inputs:
               #     azureSubscription: 'azure-arm-connection'
-              #     appName: 'my-prod-app-service-name'
-              #     containers: |
-              #       ${{ parameters.frontendImage }}:${{ parameters.tag }}
-              #       ${{ parameters.backendImage }}:${{ parameters.tag }}
+              #     appName: 'your-backend-app-name'
+              #     containers: '${{ parameters.backendImage }}:${{ parameters.tag }}'
+
+              # - task: AzureWebAppContainer@1
+              #   displayName: 'Deploy Frontend to Azure Web App'
+              #   inputs:
+              #     azureSubscription: 'azure-arm-connection'
+              #     appName: 'your-frontend-app-name'
+              #     containers: '${{ parameters.frontendImage }}:${{ parameters.tag }}'
 
             - script: |
                 echo "✅ Stage ${{ parameters.displayName }} complete."
