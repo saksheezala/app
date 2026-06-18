@@ -49,49 +49,33 @@ jobs:
               displayName: 'Print deployment info'
 
             # ─────────────────────────────────────────────────────────────────
-            # PLACEHOLDER: Replace this block with your actual deploy commands.
-            #
-            # Example A — SSH + docker compose (current setup):
-            #   - task: SSH@0
-            #     inputs:
-            #       sshEndpoint: 'ssh-${{ parameters.environmentName }}'
-            #       runOptions: 'inline'
-            #       inline: |
-            #         docker pull ${{ parameters.frontendImage }}:${{ parameters.tag }}
-            #         docker pull ${{ parameters.backendImage }}:${{ parameters.tag }}
-            #         IMAGE_TAG=${{ parameters.tag }} docker compose -f /opt/app/docker-compose.yml up -d
-            #
-            # Example B — Azure Web App Container:
-            #   - task: AzureWebAppContainer@1
-            #     inputs:
-            #       azureSubscription: 'azure-arm-connection'
-            #       appName: 'myapp-${{ parameters.environmentName }}'
-            #       containers: |
-            #         ${{ parameters.frontendImage }}:${{ parameters.tag }}
-            #         ${{ parameters.backendImage }}:${{ parameters.tag }}
-            #
-            # Example C — kubectl (Kubernetes):
-            #   - task: KubernetesManifest@0
-            #     inputs:
-            #       action: 'deploy'
-            #       kubernetesServiceConnection: 'k8s-${{ parameters.environmentName }}'
-            #       manifests: 'k8s/${{ parameters.environmentName }}/*.yml'
-            #       containers: |
-            #         ${{ parameters.frontendImage }}:${{ parameters.tag }}
-            #         ${{ parameters.backendImage }}:${{ parameters.tag }}
+            # NON-PROD ENVIRONMENTS (DEV, QA, UAT, STAGE)
+            # Physical infrastructure does not exist for these environments.
+            # We just treat them as logical pipeline gates.
             # ─────────────────────────────────────────────────────────────────
-            - script: |
-                echo "[PLACEHOLDER] Would deploy to ${{ parameters.displayName }} server here."
-                echo ""
-                echo "Commands to run on the server:"
-                echo "  docker pull ${{ parameters.frontendImage }}:${{ parameters.tag }}"
-                echo "  docker pull ${{ parameters.backendImage }}:${{ parameters.tag }}"
-                echo "  docker compose up -d"
-                echo ""
-                echo "✅ Deployment step placeholder — wire up SSH/AzureWebApp/kubectl when servers are ready."
-              displayName: 'Deploy containers to ${{ parameters.displayName }} [PLACEHOLDER]'
+            - ${{ if ne(parameters.environmentName, 'prod') }}:
+              - script: |
+                  echo "✅ Logical deployment to ${{ parameters.displayName }} complete."
+                  echo "   (No physical infrastructure exists for this environment. Pipeline proceeds.)"
+                displayName: 'Logical Gate: ${{ parameters.displayName }}'
+
+            # ─────────────────────────────────────────────────────────────────
+            # PROD ENVIRONMENT ONLY
+            # Deploys the Docker containers to Azure App Service.
+            # ─────────────────────────────────────────────────────────────────
+            - ${{ if eq(parameters.environmentName, 'prod') }}:
+              - task: AzureWebAppContainer@1
+                displayName: 'Deploy Container to Azure Web App'
+                inputs:
+                  # NOTE: You must create an Azure Resource Manager service connection
+                  # named 'azure-arm-connection' in Azure DevOps Project Settings.
+                  azureSubscription: 'azure-arm-connection'
+                  # Replace with your actual Azure App Service name
+                  appName: 'my-prod-app-service-name'
+                  containers: |
+                    ${{ parameters.frontendImage }}:${{ parameters.tag }}
+                    ${{ parameters.backendImage }}:${{ parameters.tag }}
 
             - script: |
-                echo "✅ Deployment to ${{ parameters.displayName }} complete."
-                echo "   Image tag $(Build.BuildId) is now LIVE."
-              displayName: 'Deployment complete'
+                echo "✅ Stage ${{ parameters.displayName }} complete."
+              displayName: 'Stage complete'
