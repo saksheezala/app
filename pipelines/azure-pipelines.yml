@@ -17,36 +17,38 @@
 trigger:
   branches:
     include:
-      - feature/*
-      - release
+      - feature/* # Develop branch
+      - release # Wildcard
       - main
   paths:
     exclude:
       - '*.md'
-      - '.gitignore'
+      - '.gitignore' # docs/, terraform/, .azure and related directories
 
 # ── PR Validation Trigger ─────────────────────────────────────────────────────
 # PRs run Validate stage only — no Docker build, no deployment.
 pr:
   branches:
     include:
-      - feature/*
-      - release
+      - feature/* # We never raise PR for feature branch
+      - release # Wildcard  
       - main
   paths:
     exclude:
       - '*.md'
-      - '.gitignore'
+      - '.gitignore' # docs/, terraform/, .azure and related directories
 
 # ── Agent Pool ────────────────────────────────────────────────────────────────
 pool:
-  vmImage: 'ubuntu-latest'
+  vmImage: 'ubuntu-latest' # use Self Hosted pool
 
 # ── Pipeline Variables ────────────────────────────────────────────────────────
 variables:
   # Immutable image tag — Build.BuildId is unique per pipeline run
   - name: tag
     value: '$(Build.BuildId)'
+
+  # use variable groups
 
   # Docker Hub image names
   - name: frontendImage
@@ -57,7 +59,7 @@ variables:
   # Name of the Docker Registry Service Connection in Azure DevOps
   # Create this at: Project Settings → Service Connections → New → Docker Registry
   - name: dockerHubConnection
-    value: 'dockerhub-saksheezala'
+    value: 'dockerhub-saksheezala' # Dynamic Service Connections (based on the environment e.g. for dev its dev acr)
 
   # Frontend API URL baked into the Vite build at build time.
   # For 'main' branch (STAGE + PROD), set this to your production API URL.
@@ -109,13 +111,14 @@ stages:
   # No approval required — auto-deploys on every push.
   # ─────────────────────────────────────────────────────────────────────────
   - stage: Deploy_DEV
-    displayName: '🚀 Deploy → DEV'
+    displayName: '🚀 Deploy → DEV' # No Icons
     dependsOn: Build_and_Push
+    # No environment (cant set approvals)
     condition: |
       and(
         succeeded(),
         ne(variables['Build.Reason'], 'PullRequest'),
-        startsWith(variables['Build.SourceBranch'], 'refs/heads/feature/')
+        startsWith(variables['Build.SourceBranch'], 'refs/heads/feature/') # filter for develop branch
       )
     jobs:
       - template: templates/deploy.yml
@@ -125,6 +128,9 @@ stages:
           frontendImage: '$(frontendImage)'
           backendImage: '$(backendImage)'
           tag: '$(tag)'
+          
+          # No deployment validation
+          # No DAST for frontend
 
   # ── Stage 4: Deploy → QA ─────────────────────────────────────────────────
   # Runs only on release branch.
@@ -218,7 +224,7 @@ stages:
   # PROD has dedicated, isolated infrastructure (per project constraint).
   # Same Build.BuildId tag as STAGE — guaranteed byte-for-byte identical image.
   # ─────────────────────────────────────────────────────────────────────────
-  - stage: Deploy_PROD
+  - stage: Deploy_PROD # Blue Green for Backend and Canary for Frontend
     displayName: '✋ Deploy → PROD (Approval Required)'
     dependsOn: Deploy_STAGE
     condition: |
@@ -234,3 +240,7 @@ stages:
           frontendImage: '$(frontendImage)'
           backendImage: '$(backendImage)'
           tag: '$(tag)'
+
+
+
+#Only QA has post validation

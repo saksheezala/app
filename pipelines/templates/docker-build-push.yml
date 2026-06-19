@@ -51,6 +51,9 @@ jobs:
             --label "org.opencontainers.image.created=$(Build.QueueTime)"
             --label "build.id=$(Build.BuildId)"
 
+        # Image Scanning is missing
+
+
       - task: Docker@2
         displayName: 'Push backend image'
         inputs:
@@ -60,10 +63,10 @@ jobs:
           tags: '${{ parameters.tag }}'
 
       - script: |
-          echo "✅ Backend pushed: ${{ parameters.backendImage }}:${{ parameters.tag }}"
-        displayName: 'Confirm push'
+          echo "✅ Backend pushed: ${{ parameters.backendImage }}:${{ parameters.tag }}" 
+        displayName: 'Confirm push' # its a static check (cant verify if the imgae exists on hub or not)
 
-  # ── Build & Push Frontend ─────────────────────────────────────────────────
+  # ── Build & Push Frontend ───────────────────────────────────────────────── #keep one template
   - job: Build_Push_Frontend
     displayName: 'Frontend — Build & Push :$(Build.BuildId)'
     steps:

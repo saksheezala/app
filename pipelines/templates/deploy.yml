@@ -74,7 +74,7 @@ jobs:
               # 2. Uncomment the two tasks below
               # 3. Replace 'your-frontend-app-name' and 'your-backend-app-name'
               # ─────────────────────────────────────────────────────────────────
-              
+              # Seperate tasks?
               - task: AzureWebAppContainer@1
                 displayName: 'Deploy Backend to Azure Web App'
                 inputs:
@@ -91,4 +91,4 @@ jobs:
 
             - script: |
                 echo "✅ Stage ${{ parameters.displayName }} complete."
-              displayName: 'Stage complete'
+              displayName: 'Stage complete' # Static test

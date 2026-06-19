@@ -22,12 +22,12 @@ jobs:
     displayName: 'Frontend — Lint + Test'
     steps:
 
-      - task: NodeTool@0
+      - task: NodeTool@0 # Old version
         displayName: 'Use Node.js 20'
         inputs:
-          versionSpec: '20.x'
+          versionSpec: '20.x' # use latest Stable (LTS)
 
-      - script: npm ci --prefer-offline
+      - script: npm ci --prefer-offline # integrate Artifacts
         displayName: 'Install dependencies (ci)'
         workingDirectory: '${{ parameters.frontendDir }}'
 
@@ -41,7 +41,7 @@ jobs:
         env:
           CI: 'true'
 
-      - script: npm run build
+      - script: npm run build # Prod
         displayName: 'TypeScript + Vite build (compile check)'
         workingDirectory: '${{ parameters.frontendDir }}'
 
@@ -50,12 +50,12 @@ jobs:
         condition: always()
         inputs:
           testResultsFormat: 'JUnit'
-          testResultsFiles: '${{ parameters.frontendDir }}/test-results/*.xml'
+          testResultsFiles: '${{ parameters.frontendDir }}/test-results/*.xml' #Publish to pipelines artifact
           mergeTestResults: true
           testRunTitle: 'Frontend Unit Tests'
           failTaskOnFailedTests: true
 
-  # ── Backend: Lint + Test + Build verify ──────────────────────────────────
+  # ── Backend: Lint + Test + Build verify ──────────────────────────────────.  # Keepm seperate from Frontend (if same then one job only)
   - job: Validate_Backend
     displayName: 'Backend — Lint + Test'
     steps:
