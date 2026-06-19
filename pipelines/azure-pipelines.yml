@@ -118,7 +118,7 @@ stages:
       and(
         succeeded(),
         ne(variables['Build.Reason'], 'PullRequest'),
-        startsWith(variables['Build.SourceBranch'], 'refs/heads/feature/') # filter for develop branch
+        startsWith(variables['Build.SourceBranch'], 'refs/heads/feature/')
       )
     jobs:
       - template: templates/deploy.yml
