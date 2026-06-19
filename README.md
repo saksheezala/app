@@ -37,6 +37,6 @@ docker compose up --build
 
 ## Phases
 
-- **Phase 1** ✅ Project Init, Directory Structure & Application Code
-- **Phase 2** 🔜 Containerisation (Dockerfiles + docker-compose)
-- **Phase 3** 🔜 Azure DevOps CI/CD Pipelines
+- **Phase 1**  Project Init, Directory Structure & Application Code
+- **Phase 2**  Containerisation (Dockerfiles + docker-compose)
+- **Phase 3**  Azure DevOps CI/CD Pipelines
