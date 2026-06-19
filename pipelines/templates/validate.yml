@@ -5,11 +5,6 @@
 #
 # If lint OR tests fail on either service → the entire pipeline fails.
 # No Docker build. No deployment. Ever.
-#
-# Jobs are intentionally kept separate (not merged into one) so that:
-#   - Frontend and backend failures are reported independently in the UI
-#   - Frontend and backend artifacts are published under distinct test run titles
-#   - Either job can be re-run independently without re-running the other
 # =============================================================================
 
 parameters:
@@ -27,22 +22,13 @@ jobs:
     displayName: 'Frontend — Lint + Test'
     steps:
 
-      - task: NodeTool@1
-        displayName: 'Use Node.js 20 (LTS)'
+      - task: NodeTool@0 # Old version
+        displayName: 'Use Node.js 20'
         inputs:
-          versionSpec: '20.x'
-          checkLatest: true   # Always resolve the latest patch of 20.x LTS
+          versionSpec: '20.x' # use latest Stable (LTS)
 
-      # Authenticate against Azure Artifacts feed so that npm ci can resolve
-      # private packages (scoped packages from your org feed).
-      # If you have no private packages, this step is a no-op and safe to keep.
-      - task: NpmAuthenticate@0
-        displayName: 'Authenticate npm against Azure Artifacts'
-        inputs:
-          workingFile: '${{ parameters.frontendDir }}/.npmrc'
-
-      - script: npm ci --prefer-offline
-        displayName: 'Install dependencies (ci — uses Artifacts cache)'
+      - script: npm ci --prefer-offline # integrate Artifacts
+        displayName: 'Install dependencies (ci)'
         workingDirectory: '${{ parameters.frontendDir }}'
 
       - script: npm run lint
@@ -55,52 +41,32 @@ jobs:
         env:
           CI: 'true'
 
-      - script: npm run build
-        displayName: 'Vite production build check (compile + tree-shake verification)'
+      - script: npm run build # Prod
+        displayName: 'TypeScript + Vite build (compile check)'
         workingDirectory: '${{ parameters.frontendDir }}'
 
       - task: PublishTestResults@2
-        displayName: 'Publish frontend test results to pipeline'
+        displayName: 'Publish test results'
         condition: always()
         inputs:
           testResultsFormat: 'JUnit'
-          testResultsFiles: '${{ parameters.frontendDir }}/test-results/*.xml'
+          testResultsFiles: '${{ parameters.frontendDir }}/test-results/*.xml' #Publish to pipelines artifact
           mergeTestResults: true
           testRunTitle: 'Frontend Unit Tests'
           failTaskOnFailedTests: true
 
-      # Publish the compiled frontend dist/ folder as a pipeline artifact.
-      # This allows the build output to be downloaded from the pipeline run UI
-      # and reused by other stages without rebuilding.
-      - task: PublishBuildArtifacts@1
-        displayName: 'Publish frontend dist/ as pipeline artifact'
-        condition: succeeded()
-        inputs:
-          pathToPublish: '${{ parameters.frontendDir }}/dist'
-          artifactName: 'frontend-dist'
-          publishLocation: 'Container'
-
-  # ── Backend: Lint + Test + Build verify ──────────────────────────────────
-  # Runs in parallel with Validate_Frontend.
-  # Kept as a separate job (not merged with frontend) so failures are isolated.
+  # ── Backend: Lint + Test + Build verify ──────────────────────────────────.  # Keepm seperate from Frontend (if same then one job only)
   - job: Validate_Backend
     displayName: 'Backend — Lint + Test'
     steps:
 
-      - task: NodeTool@1
-        displayName: 'Use Node.js 20 (LTS)'
+      - task: NodeTool@0
+        displayName: 'Use Node.js 20'
         inputs:
           versionSpec: '20.x'
-          checkLatest: true   # Always resolve the latest patch of 20.x LTS
-
-      # Authenticate against Azure Artifacts feed for private npm packages.
-      - task: NpmAuthenticate@0
-        displayName: 'Authenticate npm against Azure Artifacts'
-        inputs:
-          workingFile: '${{ parameters.backendDir }}/.npmrc'
 
       - script: npm ci --prefer-offline
-        displayName: 'Install dependencies (ci — uses Artifacts cache)'
+        displayName: 'Install dependencies (ci)'
         workingDirectory: '${{ parameters.backendDir }}'
 
       - script: npm run lint
@@ -115,11 +81,11 @@ jobs:
           JEST_JUNIT_OUTPUT_NAME: 'results.xml'
 
       - script: npm run build
-        displayName: 'TypeScript compile (tsc — type check + emit)'
+        displayName: 'TypeScript compile (tsc)'
         workingDirectory: '${{ parameters.backendDir }}'
 
       - task: PublishTestResults@2
-        displayName: 'Publish backend test results to pipeline'
+        displayName: 'Publish test results'
         condition: always()
         inputs:
           testResultsFormat: 'JUnit'

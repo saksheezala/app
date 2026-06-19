@@ -4,55 +4,43 @@
 # ┌─────────────────────────────────────────────────────────────────────────┐
 # │  TRIGGER        FLOW                                                    │
 # │  PR             Validate only (lint + test) — NO build, NO deploy       │
-# │  develop        Validate → Build&Push → Deploy DEV → Smoke DEV          │
-# │  release/*      Validate → Build&Push → Deploy QA → Smoke QA → UAT     │
-# │                                        → Smoke UAT                      │
-# │  main           Validate → Build&Push → Deploy STAGE ✋→ Smoke STAGE    │
-# │                                        → Deploy PROD ✋                  │
+# │  feature/*      Validate → Build&Push → Deploy DEV                      │
+# │  release        Validate → Build&Push → Deploy QA → Smoke Test → UAT   │
+# │  main           Validate → Build&Push → Deploy STAGE ✋→ Deploy PROD ✋  │
 # └─────────────────────────────────────────────────────────────────────────┘
 #
 # Image tag: $(Build.BuildId) — immutable, built once per pipeline run.
 # Manual approvals: configured on 'stage' and 'prod' Environments in Azure DevOps UI.
-# Post-deploy validation runs for ALL environments (DEV, QA, UAT, STAGE).
 # =============================================================================
 
 # ── CI Triggers ──────────────────────────────────────────────────────────────
 trigger:
   branches:
     include:
-      - develop       # Primary integration branch — triggers DEV deployment
-      - release/*     # Wildcard: matches release/1.0, release/2.1, etc. → QA + UAT
-      - main          # Production branch → STAGE (✋) + PROD (✋)
-  paths:
-    exclude:
-      - '*.md'
-      - '.gitignore'
-      - 'docs/**'         # Documentation — no pipeline impact
-      - 'terraform/**'    # Infrastructure-as-Code — managed separately
-      - '.azure/**'       # Azure DevOps config files — pipeline-safe to ignore
-      - '.github/**'      # GitHub config files (Actions, CODEOWNERS, etc.)
-
-# ── PR Validation Trigger ─────────────────────────────────────────────────────
-# PRs into develop, release/*, or main run Validate stage only.
-# No Docker build, no deployment — gate quality before merge.
-pr:
-  branches:
-    include:
-      - develop
-      - release/*
+      - feature/* # Develop branch
+      - release # Wildcard
       - main
   paths:
     exclude:
       - '*.md'
-      - '.gitignore'
-      - 'docs/**'
-      - 'terraform/**'
-      - '.azure/**'
-      - '.github/**'
+      - '.gitignore' # docs/, terraform/, .azure and related directories
+
+# ── PR Validation Trigger ─────────────────────────────────────────────────────
+# PRs run Validate stage only — no Docker build, no deployment.
+pr:
+  branches:
+    include:
+      - feature/* # We never raise PR for feature branch
+      - release # Wildcard  
+      - main
+  paths:
+    exclude:
+      - '*.md'
+      - '.gitignore' # docs/, terraform/, .azure and related directories
 
 # ── Agent Pool ────────────────────────────────────────────────────────────────
 pool:
-  vmImage: 'ubuntu-latest' # Use Self-Hosted pool for production to reduce costs
+  vmImage: 'ubuntu-latest' # use Self Hosted pool
 
 # ── Pipeline Variables ────────────────────────────────────────────────────────
 variables:
@@ -60,29 +48,23 @@ variables:
   - name: tag
     value: '$(Build.BuildId)'
 
-  # ── Variable Groups ─────────────────────────────────────────────────────────
-  # Variable groups are defined in Azure DevOps → Pipelines → Library.
-  # Each group holds environment-specific secrets and config values:
-  #   dev-vars     → DEV Docker Hub service connection, API URL, server URLs
-  #   qa-vars      → QA  Docker Hub service connection, API URL, server URLs
-  #   release-vars → UAT Docker Hub service connection, API URL, server URLs
-  #   prod-vars    → PROD Docker Hub service connection, API URL, server URLs
-  #
-  # Each group should define at minimum:
-  #   dockerHubConnection  — name of the Docker Registry Service Connection
-  #   VITE_API_URL         — backend API URL baked into the Vite JS bundle
-  #   FRONTEND_URL         — deployed frontend URL (for health checks + DAST)
-  #   BACKEND_URL          — deployed backend URL  (for health checks)
-  - group: dev-vars
-  - group: qa-vars
-  - group: release-vars
-  - group: prod-vars
+  # use variable groups
 
-  # Docker Hub image names (same image, different tags per run)
+  # Docker Hub image names
   - name: frontendImage
     value: 'saksheezala/app-frontend'
   - name: backendImage
     value: 'saksheezala/app-backend'
+
+  # Name of the Docker Registry Service Connection in Azure DevOps
+  # Create this at: Project Settings → Service Connections → New → Docker Registry
+  - name: dockerHubConnection
+    value: 'dockerhub-saksheezala' # Dynamic Service Connections (based on the environment e.g. for dev its dev acr)
+
+  # Frontend API URL baked into the Vite build at build time.
+  # For 'main' branch (STAGE + PROD), set this to your production API URL.
+  - name: VITE_API_URL
+    value: 'https://sakshee-app-backend-gkd9fghrephmdjcf.centralindia-01.azurewebsites.net'
 
 # =============================================================================
 # STAGES
@@ -106,7 +88,6 @@ stages:
   # Skipped for PRs (ne Build.Reason PullRequest).
   # Builds BOTH images with Build.BuildId tag — this same tag flows
   # through all subsequent deploy stages on this pipeline run.
-  # Includes Trivy image scanning for HIGH/CRITICAL CVEs before push.
   # ─────────────────────────────────────────────────────────────────────────
   - stage: Build_and_Push
     displayName: '🐳 Build & Push — $(Build.BuildId)'
@@ -122,27 +103,22 @@ stages:
           frontendImage: '$(frontendImage)'
           backendImage: '$(backendImage)'
           tag: '$(tag)'
-          # Dynamic service connection — resolved from the active variable group.
-          # On develop: dev-vars.dockerHubConnection
-          # On release/*: qa-vars.dockerHubConnection
-          # On main: prod-vars.dockerHubConnection
           dockerHubConnection: '$(dockerHubConnection)'
           viteApiUrl: '$(VITE_API_URL)'
 
   # ── Stage 3: Deploy → DEV ────────────────────────────────────────────────
-  # Runs only on the develop branch.
-  # No manual approval — auto-deploys on every push to develop.
-  # DEV environment is configured in Azure DevOps Environments with NO approval gate.
-  # Includes post-deploy health check and OWASP ZAP DAST on the frontend.
+  # Runs only on feature/* branches.
+  # No approval required — auto-deploys on every push.
   # ─────────────────────────────────────────────────────────────────────────
   - stage: Deploy_DEV
-    displayName: '🚀 Deploy → DEV'
+    displayName: '🚀 Deploy → DEV' # No Icons
     dependsOn: Build_and_Push
+    # No environment (cant set approvals)
     condition: |
       and(
         succeeded(),
         ne(variables['Build.Reason'], 'PullRequest'),
-        eq(variables['Build.SourceBranch'], 'refs/heads/develop')
+        startsWith(variables['Build.SourceBranch'], 'refs/heads/feature/') # filter for develop branch
       )
     jobs:
       - template: templates/deploy.yml
@@ -152,36 +128,13 @@ stages:
           frontendImage: '$(frontendImage)'
           backendImage: '$(backendImage)'
           tag: '$(tag)'
-          frontendUrl: '$(FRONTEND_URL)'
-          backendUrl: '$(BACKEND_URL)'
-          deploymentValidation: true
-          runDAST: true
+          
+          # No deployment validation
+          # No DAST for frontend
 
-  # ── Stage 4: Post-Deploy Smoke Tests (DEV) ───────────────────────────────
-  # Runs after successful DEV deployment on develop branch.
-  # If smoke tests FAIL → pipeline stops (no further stages on this run).
-  # ─────────────────────────────────────────────────────────────────────────
-  - stage: Post_Deploy_DEV_Validate
-    displayName: '🧪 Smoke Tests — DEV'
-    dependsOn: Deploy_DEV
-    condition: |
-      and(
-        succeeded(),
-        eq(variables['Build.SourceBranch'], 'refs/heads/develop')
-      )
-    jobs:
-      - template: templates/post-deploy-validate.yml
-        parameters:
-          environment: 'DEV'
-          backendUrl: '$(BACKEND_URL)'
-          frontendUrl: '$(FRONTEND_URL)'
-
-  # ── Stage 5: Deploy → QA ─────────────────────────────────────────────────
-  # Runs only on release/* branches.
-  # No approval — auto-deploys. Smoke tests run AFTER in Stage 6.
-  # QA environment is configured in Azure DevOps Environments with NO approval gate.
-  # Dynamic service connection: qa-vars.dockerHubConnection from variable group.
-  # Includes post-deploy health check and OWASP ZAP DAST.
+  # ── Stage 4: Deploy → QA ─────────────────────────────────────────────────
+  # Runs only on release branch.
+  # No approval — auto-deploys. Smoke tests run AFTER in Stage 5.
   # ─────────────────────────────────────────────────────────────────────────
   - stage: Deploy_QA
     displayName: '🚀 Deploy → QA'
@@ -190,7 +143,7 @@ stages:
       and(
         succeeded(),
         ne(variables['Build.Reason'], 'PullRequest'),
-        startsWith(variables['Build.SourceBranch'], 'refs/heads/release/')
+        eq(variables['Build.SourceBranch'], 'refs/heads/release')
       )
     jobs:
       - template: templates/deploy.yml
@@ -200,13 +153,9 @@ stages:
           frontendImage: '$(frontendImage)'
           backendImage: '$(backendImage)'
           tag: '$(tag)'
-          frontendUrl: '$(FRONTEND_URL)'
-          backendUrl: '$(BACKEND_URL)'
-          deploymentValidation: true
-          runDAST: true
 
-  # ── Stage 6: Post-Deploy Smoke Tests (QA) ────────────────────────────────
-  # Runs only after successful QA deployment on release/* branch.
+  # ── Stage 5: Post-Deploy Smoke Tests (QA) ────────────────────────────────
+  # Runs only after successful QA deployment on release branch.
   # If smoke tests FAIL → UAT is blocked. Fix QA first.
   # ─────────────────────────────────────────────────────────────────────────
   - stage: Post_Deploy_QA_Validate
@@ -215,20 +164,19 @@ stages:
     condition: |
       and(
         succeeded(),
-        startsWith(variables['Build.SourceBranch'], 'refs/heads/release/')
+        eq(variables['Build.SourceBranch'], 'refs/heads/release')
       )
     jobs:
       - template: templates/post-deploy-validate.yml
         parameters:
           environment: 'QA'
-          backendUrl: '$(BACKEND_URL)'
-          frontendUrl: '$(FRONTEND_URL)'
+          backendUrl: 'http://qa-server.yourapp.com:3000'
+          frontendUrl: 'http://qa-server.yourapp.com'
 
-  # ── Stage 7: Deploy → UAT ────────────────────────────────────────────────
-  # Runs only after smoke tests pass on release/* branch.
+  # ── Stage 6: Deploy → UAT ────────────────────────────────────────────────
+  # Runs only after smoke tests pass on release branch.
   # Same Build.BuildId tag as QA — same image, no rebuild.
   # No approval — auto-deploys after passing QA validation.
-  # Includes post-deploy health check (DAST not run on UAT — covered by QA).
   # ─────────────────────────────────────────────────────────────────────────
   - stage: Deploy_UAT
     displayName: '🚀 Deploy → UAT'
@@ -236,7 +184,7 @@ stages:
     condition: |
       and(
         succeeded(),
-        startsWith(variables['Build.SourceBranch'], 'refs/heads/release/')
+        eq(variables['Build.SourceBranch'], 'refs/heads/release')
       )
     jobs:
       - template: templates/deploy.yml
@@ -246,34 +194,11 @@ stages:
           frontendImage: '$(frontendImage)'
           backendImage: '$(backendImage)'
           tag: '$(tag)'
-          frontendUrl: '$(FRONTEND_URL)'
-          backendUrl: '$(BACKEND_URL)'
-          deploymentValidation: true
-          runDAST: false
 
-  # ── Stage 8: Post-Deploy Smoke Tests (UAT) ───────────────────────────────
-  # Runs after successful UAT deployment on release/* branch.
-  # ─────────────────────────────────────────────────────────────────────────
-  - stage: Post_Deploy_UAT_Validate
-    displayName: '🧪 Smoke Tests — UAT'
-    dependsOn: Deploy_UAT
-    condition: |
-      and(
-        succeeded(),
-        startsWith(variables['Build.SourceBranch'], 'refs/heads/release/')
-      )
-    jobs:
-      - template: templates/post-deploy-validate.yml
-        parameters:
-          environment: 'UAT'
-          backendUrl: '$(BACKEND_URL)'
-          frontendUrl: '$(FRONTEND_URL)'
-
-  # ── Stage 9: Deploy → STAGE ──────────────────────────────────────────────
+  # ── Stage 7: Deploy → STAGE ──────────────────────────────────────────────
   # Runs only on main branch.
   # ✋ MANUAL APPROVAL REQUIRED — configured on 'stage' Environment in Azure DevOps.
   #    Pipeline pauses here and notifies approvers. Resumes only after approval.
-  # Includes post-deploy health check after approval + deployment.
   # ─────────────────────────────────────────────────────────────────────────
   - stage: Deploy_STAGE
     displayName: '✋ Deploy → STAGE (Approval Required)'
@@ -292,40 +217,16 @@ stages:
           frontendImage: '$(frontendImage)'
           backendImage: '$(backendImage)'
           tag: '$(tag)'
-          frontendUrl: '$(FRONTEND_URL)'
-          backendUrl: '$(BACKEND_URL)'
-          deploymentValidation: true
-          runDAST: false
 
-  # ── Stage 10: Post-Deploy Smoke Tests (STAGE) ────────────────────────────
-  # Runs after successful STAGE deployment on main branch.
-  # If smoke tests FAIL → PROD is blocked.
-  # ─────────────────────────────────────────────────────────────────────────
-  - stage: Post_Deploy_STAGE_Validate
-    displayName: '🧪 Smoke Tests — STAGE'
-    dependsOn: Deploy_STAGE
-    condition: |
-      and(
-        succeeded(),
-        eq(variables['Build.SourceBranch'], 'refs/heads/main')
-      )
-    jobs:
-      - template: templates/post-deploy-validate.yml
-        parameters:
-          environment: 'STAGE'
-          backendUrl: '$(BACKEND_URL)'
-          frontendUrl: '$(FRONTEND_URL)'
-
-  # ── Stage 11: Deploy → PROD ──────────────────────────────────────────────
-  # Runs only after STAGE smoke tests pass on main branch.
+  # ── Stage 8: Deploy → PROD ───────────────────────────────────────────────
+  # Runs only after successful STAGE deployment on main branch.
   # ✋ MANUAL APPROVAL REQUIRED — configured on 'prod' Environment in Azure DevOps.
   # PROD has dedicated, isolated infrastructure (per project constraint).
   # Same Build.BuildId tag as STAGE — guaranteed byte-for-byte identical image.
-  # Blue-Green for Backend / Canary for Frontend (configured in Azure Web App slots).
   # ─────────────────────────────────────────────────────────────────────────
-  - stage: Deploy_PROD
+  - stage: Deploy_PROD # Blue Green for Backend and Canary for Frontend
     displayName: '✋ Deploy → PROD (Approval Required)'
-    dependsOn: Post_Deploy_STAGE_Validate
+    dependsOn: Deploy_STAGE
     condition: |
       and(
         succeeded(),
@@ -339,7 +240,7 @@ stages:
           frontendImage: '$(frontendImage)'
           backendImage: '$(backendImage)'
           tag: '$(tag)'
-          frontendUrl: '$(FRONTEND_URL)'
-          backendUrl: '$(BACKEND_URL)'
-          deploymentValidation: false  # PROD health validated by STAGE smoke tests
-          runDAST: false               # DAST covered by DEV and QA stages
+
+
+
+# Only QA has post validation

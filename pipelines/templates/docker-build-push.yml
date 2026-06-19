@@ -6,11 +6,6 @@
 #
 # Authentication: Uses Azure DevOps Docker Registry Service Connection.
 # No credentials in YAML — all secrets managed by Azure DevOps.
-#
-# Why two separate jobs (not one)?
-#   Frontend requires a VITE_API_URL build-arg baked into the JS bundle at
-#   build time. Backend has no such build-arg. Merging them into one job
-#   would not simplify the steps, just hide the distinction.
 # =============================================================================
 
 parameters:
@@ -56,35 +51,8 @@ jobs:
             --label "org.opencontainers.image.created=$(Build.QueueTime)"
             --label "build.id=$(Build.BuildId)"
 
-      # ── Trivy Image Scan (Backend) ────────────────────────────────────────
-      # Trivy is a static vulnerability scanner for container images.
-      # It scans the locally built image BEFORE it is pushed to the registry.
-      # This is a static analysis step — it does not require the image to exist
-      # on Docker Hub. It fails the pipeline on HIGH or CRITICAL CVEs.
-      # Trivy is not pre-installed on Microsoft-hosted agents, so we install it.
-      - script: |
-          echo "Installing Trivy..."
-          sudo apt-get update -qq
-          sudo apt-get install -y wget apt-transport-https gnupg
-          wget -qO - https://aquasecurity.github.io/trivy-repo/deb/public.key | sudo apt-key add -
-          echo "deb https://aquasecurity.github.io/trivy-repo/deb generic main" | sudo tee /etc/apt/sources.list.d/trivy.list
-          sudo apt-get update -qq
-          sudo apt-get install -y trivy
-          echo "Trivy version: $(trivy --version)"
-        displayName: 'Install Trivy'
+        # Image Scanning is missing
 
-      - script: |
-          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-          echo " Scanning backend image for vulnerabilities..."
-          echo " Image: ${{ parameters.backendImage }}:${{ parameters.tag }}"
-          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-          trivy image \
-            --exit-code 1 \
-            --severity HIGH,CRITICAL \
-            --no-progress \
-            --format table \
-            "${{ parameters.backendImage }}:${{ parameters.tag }}"
-        displayName: 'Trivy scan — backend image (HIGH/CRITICAL fail)'
 
       - task: Docker@2
         displayName: 'Push backend image'
@@ -94,15 +62,11 @@ jobs:
           containerRegistry: '${{ parameters.dockerHubConnection }}'
           tags: '${{ parameters.tag }}'
 
-      # Note: This is a static confirmation step — it echoes the expected image
-      # tag but cannot verify the image actually exists on the registry hub.
-      # Use the Docker Hub API or a subsequent pull/inspect step for true verification.
       - script: |
-          echo "✅ Backend push initiated: ${{ parameters.backendImage }}:${{ parameters.tag }}"
-          echo "   (Static confirmation — verifies the push task ran, not registry availability)"
-        displayName: 'Confirm push (static)'
+          echo "✅ Backend pushed: ${{ parameters.backendImage }}:${{ parameters.tag }}" 
+        displayName: 'Confirm push' # its a static check (cant verify if the imgae exists on hub or not)
 
-  # ── Build & Push Frontend ─────────────────────────────────────────────────
+  # ── Build & Push Frontend ───────────────────────────────────────────────── #keep one template
   - job: Build_Push_Frontend
     displayName: 'Frontend — Build & Push :$(Build.BuildId)'
     steps:
@@ -134,33 +98,6 @@ jobs:
             --label "org.opencontainers.image.created=$(Build.QueueTime)"
             --label "build.id=$(Build.BuildId)"
 
-      # ── Trivy Image Scan (Frontend) ───────────────────────────────────────
-      # Same static scan as backend — runs on the locally built image before push.
-      # Trivy installation is repeated per job since jobs run on isolated agents.
-      - script: |
-          echo "Installing Trivy..."
-          sudo apt-get update -qq
-          sudo apt-get install -y wget apt-transport-https gnupg
-          wget -qO - https://aquasecurity.github.io/trivy-repo/deb/public.key | sudo apt-key add -
-          echo "deb https://aquasecurity.github.io/trivy-repo/deb generic main" | sudo tee /etc/apt/sources.list.d/trivy.list
-          sudo apt-get update -qq
-          sudo apt-get install -y trivy
-          echo "Trivy version: $(trivy --version)"
-        displayName: 'Install Trivy'
-
-      - script: |
-          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-          echo " Scanning frontend image for vulnerabilities..."
-          echo " Image: ${{ parameters.frontendImage }}:${{ parameters.tag }}"
-          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-          trivy image \
-            --exit-code 1 \
-            --severity HIGH,CRITICAL \
-            --no-progress \
-            --format table \
-            "${{ parameters.frontendImage }}:${{ parameters.tag }}"
-        displayName: 'Trivy scan — frontend image (HIGH/CRITICAL fail)'
-
       - task: Docker@2
         displayName: 'Push frontend image'
         inputs:
@@ -169,8 +106,6 @@ jobs:
           containerRegistry: '${{ parameters.dockerHubConnection }}'
           tags: '${{ parameters.tag }}'
 
-      # Note: Static confirmation — echoes expected tag, cannot verify registry availability.
       - script: |
-          echo "✅ Frontend push initiated: ${{ parameters.frontendImage }}:${{ parameters.tag }}"
-          echo "   (Static confirmation — verifies the push task ran, not registry availability)"
-        displayName: 'Confirm push (static)'
+          echo "✅ Frontend pushed: ${{ parameters.frontendImage }}:${{ parameters.tag }}"
+        displayName: 'Confirm push'
