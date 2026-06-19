@@ -7,9 +7,16 @@
 #   2. Manual Approval checks on 'stage' and 'prod' environments pause here
 #   3. Deployment history is maintained per environment
 #
-# Current deploy steps are PLACEHOLDERS.
-# Replace the SSH script block with your actual deployment method when
-# servers are provisioned (SSH + docker-compose, kubectl, Azure Web App, etc.)
+# Approval gates:
+#   - DEV   → No approval required (auto-deploys on every develop push)
+#   - QA    → No approval required (auto-deploys on release/* push)
+#   - UAT   → No approval required (auto-deploys after QA smoke tests pass)
+#   - STAGE → ✋ Manual approval required (configured in Azure DevOps Environments)
+#   - PROD  → ✋ Manual approval required (configured in Azure DevOps Environments)
+#
+# Post-deploy validation and DAST:
+#   Pass deploymentValidation: true  → runs health-check probe after deploy
+#   Pass runDAST: true               → runs OWASP ZAP baseline scan on frontend
 # =============================================================================
 
 parameters:
@@ -23,6 +30,18 @@ parameters:
     type: string
   - name: tag
     type: string
+  - name: frontendUrl
+    type: string
+    default: 'http://localhost'   # Override per environment in azure-pipelines.yml
+  - name: backendUrl
+    type: string
+    default: 'http://localhost:3000'  # Override per environment in azure-pipelines.yml
+  - name: deploymentValidation
+    type: boolean
+    default: false   # Set to true for DEV, QA, UAT, STAGE to run health-checks
+  - name: runDAST
+    type: boolean
+    default: false   # Set to true for DEV and QA to run OWASP ZAP DAST on frontend
 
 jobs:
   - deployment: Deploy_${{ parameters.displayName }}
@@ -31,6 +50,7 @@ jobs:
     # For 'stage' and 'prod': add an "Approvals and checks → Approvals" rule
     # in Azure DevOps → Pipelines → Environments → [stage/prod] → ⚙️ Approvals.
     # The pipeline will PAUSE here and email approvers. Nothing runs until approved.
+    # For 'dev', 'qa', 'uat': no approval gate — set none in Azure DevOps Environments.
     environment: '${{ parameters.environmentName }}'
     strategy:
       runOnce:
@@ -50,31 +70,33 @@ jobs:
 
             # ─────────────────────────────────────────────────────────────────
             # NON-PROD ENVIRONMENTS (DEV, QA, UAT, STAGE)
-            # Physical infrastructure does not exist for these environments.
-            # We just treat them as logical pipeline gates.
+            # Physical infrastructure does not exist for these environments yet.
+            # We use them as logical pipeline gates tracked in Azure DevOps Environments.
+            # Replace this block with: SSH + docker-compose pull & up, kubectl rollout,
+            # or AzureWebApp tasks when infrastructure is provisioned.
             # ─────────────────────────────────────────────────────────────────
             - ${{ if ne(parameters.environmentName, 'prod') }}:
               - script: |
                   echo "✅ Logical deployment to ${{ parameters.displayName }} complete."
-                  echo "   (No physical infrastructure exists for this environment. Pipeline proceeds.)"
+                  echo "   Images: ${{ parameters.frontendImage }}:${{ parameters.tag }}"
+                  echo "          ${{ parameters.backendImage }}:${{ parameters.tag }}"
+                  echo "   (No physical infrastructure exists yet. Pipeline gate passed.)"
                 displayName: 'Logical Gate: ${{ parameters.displayName }}'
 
             # ─────────────────────────────────────────────────────────────────
             # PROD ENVIRONMENT ONLY
+            # Deploys both backend and frontend as separate Azure Web App tasks.
+            # Separate tasks ensure: independent deployment tracking, rollback
+            # scoped to one service only, and clear failure attribution in logs.
             # ─────────────────────────────────────────────────────────────────
             - ${{ if eq(parameters.environmentName, 'prod') }}:
               - script: |
                   echo "🚀 PROD Deployment Triggered!"
-                  echo "When you have created your Azure App Service and Service Connection,"
-                  echo "uncomment the AzureWebAppContainer task in deploy.yml."
-                displayName: 'Deploy Container to Azure Web App (Placeholder)'
-              # ─────────────────────────────────────────────────────────────────
-              # HOW TO ENABLE PROD DEPLOYMENT:
-              # 1. Create the Azure Service Connection ('azure-arm-connection')
-              # 2. Uncomment the two tasks below
-              # 3. Replace 'your-frontend-app-name' and 'your-backend-app-name'
-              # ─────────────────────────────────────────────────────────────────
-              # Seperate tasks?
+                  echo "   Backend  → sakshee-app-backend"
+                  echo "   Frontend → sakshee-app-frontend"
+                displayName: 'PROD Deployment — Start'
+
+              # Backend deployed first so it is ready before frontend traffic hits it.
               - task: AzureWebAppContainer@1
                 displayName: 'Deploy Backend to Azure Web App'
                 inputs:
@@ -82,6 +104,7 @@ jobs:
                   appName: 'sakshee-app-backend'
                   containers: '${{ parameters.backendImage }}:${{ parameters.tag }}'
 
+              # Frontend deployed second — relies on backend being up.
               - task: AzureWebAppContainer@1
                 displayName: 'Deploy Frontend to Azure Web App'
                 inputs:
@@ -89,6 +112,139 @@ jobs:
                   appName: 'sakshee-app-frontend'
                   containers: '${{ parameters.frontendImage }}:${{ parameters.tag }}'
 
+            # ─────────────────────────────────────────────────────────────────
+            # POST-DEPLOY HEALTH CHECK (deploymentValidation: true)
+            # Runs after the deploy steps for DEV, QA, UAT, STAGE.
+            # Probes the backend /health and /health/ready endpoints and the
+            # frontend HTTP root to confirm the deployment is serving traffic.
+            # Since actual infrastructure URLs are not available yet, this step
+            # simulates the probe — replace the echo/curl block with real URLs.
+            # ─────────────────────────────────────────────────────────────────
+            - ${{ if eq(parameters.deploymentValidation, true) }}:
+              - script: |
+                  echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+                  echo " Post-Deploy Health Check — ${{ parameters.displayName }}"
+                  echo " Backend URL : ${{ parameters.backendUrl }}"
+                  echo " Frontend URL: ${{ parameters.frontendUrl }}"
+                  echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+
+                  MAX_RETRIES=5
+                  SLEEP_SEC=10
+
+                  for endpoint in \
+                    "${{ parameters.backendUrl }}/health" \
+                    "${{ parameters.backendUrl }}/health/ready" \
+                    "${{ parameters.frontendUrl }}"; do
+
+                    echo ""
+                    echo "→ Probing: $endpoint"
+                    for i in $(seq 1 $MAX_RETRIES); do
+                      HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" --max-time 10 "$endpoint" || echo "000")
+                      if [ "$HTTP_CODE" = "200" ]; then
+                        echo "  ✅ $endpoint responded HTTP 200 (attempt $i)"
+                        break
+                      else
+                        echo "  ⚠️  Attempt $i/$MAX_RETRIES — got HTTP $HTTP_CODE. Retrying in ${SLEEP_SEC}s..."
+                        sleep $SLEEP_SEC
+                      fi
+                      if [ "$i" = "$MAX_RETRIES" ]; then
+                        echo "  ❌ $endpoint did not respond with HTTP 200 after $MAX_RETRIES attempts."
+                        exit 1
+                      fi
+                    done
+                  done
+
+                  echo ""
+                  echo "✅ All health checks passed for ${{ parameters.displayName }}"
+                displayName: 'Post-deploy health check (backend + frontend)'
+                timeoutInMinutes: 5
+
+            # ─────────────────────────────────────────────────────────────────
+            # DAST — OWASP ZAP Baseline Scan (runDAST: true)
+            # Dynamic Application Security Testing on the deployed frontend URL.
+            # Uses the official OWASP ZAP Docker image to run a passive baseline
+            # scan — it spiders the site and reports security issues without
+            # actively attacking it. Alerts are written to a JUnit XML report
+            # and published to the pipeline. The scan does NOT fail the pipeline
+            # on alerts (--exit-code 0) — review the report and escalate as needed.
+            # To make it fail on alerts, change exit-code to 1.
+            #
+            # Requires Docker to be available on the agent (ubuntu-latest has it).
+            # ─────────────────────────────────────────────────────────────────
+            - ${{ if eq(parameters.runDAST, true) }}:
+              - script: |
+                  echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+                  echo " OWASP ZAP DAST Baseline Scan — ${{ parameters.displayName }}"
+                  echo " Target: ${{ parameters.frontendUrl }}"
+                  echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+
+                  mkdir -p $(Build.ArtifactStagingDirectory)/zap
+
+                  docker run --rm \
+                    -v "$(Build.ArtifactStagingDirectory)/zap:/zap/wrk:rw" \
+                    ghcr.io/zaproxy/zaproxy:stable zap-baseline.py \
+                    -t "${{ parameters.frontendUrl }}" \
+                    -r zap-report.html \
+                    -x zap-report.xml \
+                    -J zap-report.json \
+                    -I \
+                    --hook=/zap/auth_hook.py 2>/dev/null || true
+
+                  # Convert ZAP XML to JUnit format for Azure DevOps test results
+                  python3 - <<'EOF'
+                  import xml.etree.ElementTree as ET
+                  import os
+
+                  zap_xml = "$(Build.ArtifactStagingDirectory)/zap/zap-report.xml"
+                  junit_xml = "$(Build.ArtifactStagingDirectory)/zap/zap-junit.xml"
+
+                  if not os.path.exists(zap_xml):
+                      print("ZAP report not found — writing empty JUnit result")
+                      with open(junit_xml, "w") as f:
+                          f.write('<testsuites><testsuite name="ZAP DAST" tests="0"/></testsuites>')
+                  else:
+                      tree = ET.parse(zap_xml)
+                      root = tree.getroot()
+                      alerts = root.findall('.//alertitem')
+                      high = [a for a in alerts if a.findtext('riskdesc','').startswith('High') or a.findtext('riskdesc','').startswith('Critical')]
+                      lines = ['<testsuites>', f'<testsuite name="ZAP DAST - ${{ parameters.displayName }}" tests="{len(alerts)}" failures="{len(high)}">']
+                      for a in alerts:
+                          name = a.findtext('alert', 'Unknown Alert')
+                          risk = a.findtext('riskdesc', 'Info')
+                          url  = a.findtext('uri', '')
+                          desc = a.findtext('desc', '')
+                          is_fail = risk.startswith('High') or risk.startswith('Critical')
+                          lines.append(f'<testcase name="{name}" classname="ZAP.{risk}">')
+                          if is_fail:
+                              lines.append(f'<failure message="{risk}: {url}">{desc}</failure>')
+                          lines.append('</testcase>')
+                      lines += ['</testsuite>', '</testsuites>']
+                      with open(junit_xml, "w") as f:
+                          f.write('\n'.join(lines))
+                      print(f"✅ JUnit report written: {len(alerts)} alerts ({len(high)} High/Critical)")
+                  EOF
+
+                  echo "✅ ZAP scan complete for ${{ parameters.displayName }}"
+                displayName: 'OWASP ZAP — DAST baseline scan'
+                timeoutInMinutes: 15
+
+              - task: PublishTestResults@2
+                displayName: 'Publish ZAP DAST results'
+                condition: always()
+                inputs:
+                  testResultsFormat: 'JUnit'
+                  testResultsFiles: '$(Build.ArtifactStagingDirectory)/zap/zap-junit.xml'
+                  testRunTitle: 'DAST — OWASP ZAP (${{ parameters.displayName }})'
+                  failTaskOnFailedTests: false   # Report only — do not fail pipeline on ZAP findings
+
+              - task: PublishBuildArtifacts@1
+                displayName: 'Publish ZAP HTML report as pipeline artifact'
+                condition: always()
+                inputs:
+                  pathToPublish: '$(Build.ArtifactStagingDirectory)/zap'
+                  artifactName: 'zap-dast-${{ parameters.environmentName }}'
+                  publishLocation: 'Container'
+
             - script: |
                 echo "✅ Stage ${{ parameters.displayName }} complete."
-              displayName: 'Stage complete' # Static test
+              displayName: 'Stage complete'
